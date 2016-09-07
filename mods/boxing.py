@@ -1,7 +1,7 @@
 import bs
 
 def bsGetAPIVersion():
-    return 3
+    return 4
 
 def bsGetGames():
     return [DeathMatchGame]
@@ -77,6 +77,10 @@ class DeathMatchGame(bs.TeamGameActivity):
 
         spaz.equipBoxingGloves()
 
+   
+        spaz._punchPowerScale = 7.1
+        spaz._punchCooldown = 3000
+    
     def handleMessage(self,m):
 
         if isinstance(m,bs.PlayerSpazDeathMessage):

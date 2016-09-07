@@ -39,9 +39,9 @@ class ArmsRace(bs.TeamGameActivity):
 		State(bomb='ice', name='Frozen Bombs'),
 		State(bomb='sticky', name='Sticky Bombs'),
 		State(bomb='impact', name='Impact Bombs'),
-		State(grab=True, name='Grabbing only'),
 		State(punch=True, name='Punching only'),
-		State(curse=True, name='Cursed', final=True)
+		State(curse=True, name='Cursed'),
+		State(grab=True, name='Grabbing only',final=True)
 	]
 
 	@classmethod
@@ -56,7 +56,7 @@ class ArmsRace(bs.TeamGameActivity):
 
 	@classmethod
 	def getDescription(cls, sessionType):
-		return "Upgrade your weapon by eliminating enemies.\nWin the match by being the first player\nto get a kill while cursed."
+		return "Upgrade your weapon by eliminating enemies.\nWin the match by being the first player\nto get a kill grabbing only."
 
 	def getInstanceDescription(self):
 		return 'Upgrade your weapon by eliminating enemies.'
@@ -142,7 +142,7 @@ class ArmsRace(bs.TeamGameActivity):
 
 
 def bsGetAPIVersion():
-	return 3
+	return 4
 
 def bsGetGames():
 	return [ArmsRace]

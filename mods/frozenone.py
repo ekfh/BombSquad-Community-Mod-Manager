@@ -2,7 +2,7 @@ import bs
 from bsChosenOne import ChosenOneGame
 
 def bsGetAPIVersion():
-	return 3
+	return 4
 
 def bsGetGames():
 	return [FrozenOneGame]
@@ -64,7 +64,7 @@ class FrozenOneGame(ChosenOneGame):
 									  'intensity':0.6,
 									  'heightAttenuated':False,
 									  'volumeIntensityScale':0.1,
-									  'radius':0.1,
+									  'radius':0.1, 
 									  'color': (1.2,1.2,0.4)})
 
 				self._flashFlagSpawn()

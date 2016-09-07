@@ -1,27 +1,8 @@
 import random
 import bs
 import bsUtils
-import bsElimination
 import bsBomb
 
-class Icon(bsElimination.Icon):
-	def updateForLives(self):
-		if self._player.exists():
-			lives = self._player.gameData['lives']
-		else: lives = 0
-		if self._showLives:
-			if lives > 0:
-				self._livesText.text = 'x' + str(lives - 1)
-			elif lives < 0:
-				self._livesText.text = str(lives)
-			else:
-				self._livesText.text = ''
-		if lives == 0:
-			if hasattr(bs.getActivity(), 'timeLimitOnly'):
-				if not bs.getActivity().timeLimitOnly:
-					self._nameText.opacity = 0.2
-					self.node.color = (0.7, 0.3, 0.3)
-					self.node.opacity = 0.2
 
 class PowBox(bsBomb.Bomb):
 	def __init__(self, position=(0, 1, 0), velocity=(0, 0, 0)):
@@ -290,7 +271,7 @@ class PlayerSpaz_Smash(bs.PlayerSpaz):
 
 
 def bsGetAPIVersion():
-	return 3
+	return 4
 
 def bsGetGames():
 	return [SuperSmash]
@@ -301,23 +282,6 @@ class SuperSmash(bs.TeamGameActivity):
 	def getName(cls):
 		return 'Super Smash'
 
-	@classmethod
-	def getScoreInfo(cls):
-		if cls == SuperSmash:
-			if bs.getActivity().__class__ == SuperSmash and hasattr(bs.getActivity(), 'timeLimitOnly'):
-				# some sanity checks that probably arent needed
-				if bs.getActivity().timeLimitOnly:
-					# if its timeonlymode return different scoreinfo
-					return {'scoreName':'Deaths',
-							'scoreType':'points',
-							'scoreVersion':'B',
-							'noneIsWinner':True,
-							'lowerIsBetter': True}
-
-		return {'scoreName':'Survived',
-			'scoreType':'seconds',
-			'scoreVersion':'B',
-			'noneIsWinner':True}
 
 	@classmethod
 	def getDescription(cls, sessionType):
@@ -325,16 +289,10 @@ class SuperSmash(bs.TeamGameActivity):
 
 
 	def getInstanceDescription(self):
-		return 'Knock everyone off the map.'
+		return ('KO ${ARG1} of your enemies.',self._scoreToWin)
 
 	def getInstanceScoreBoardDescription(self):
-		if self.timeLimitOnly:
-			return 'Knock everyone off the map.'
-		else:
-			if self.settings['Lives'] > 1:
-				return ('Knock the others off ${ARG1} times.', self.settings['Lives'])
-			else:
-				return 'Knock everyone off once.'
+		return ('KO ${ARG1} enemies',self._scoreToWin)
 
 
 	@classmethod
@@ -345,47 +303,49 @@ class SuperSmash(bs.TeamGameActivity):
 	@classmethod
 	def getSupportedMaps(cls, sessionType):
 		maps = bs.getMapsSupportingPlayType("melee")
-		for m in ['Lake Frigid', 'Hockey Stadium', 'Football Stadium']:
+		for m in ['Lake Frigid', 'Hockey Stadium']:
 			# remove maps without bounds
 			maps.remove(m)
 		return maps
 
 	@classmethod
 	def getSettings(cls, sessionType):
-		return [("Time Limit", {'choices':[('None', 0), ('1 Minute', 60), ('2 Minutes', 120),
-											('5 Minutes', 300)], 'default': 0}),
-				("Lives (0 = Unlimited)", {'minValue': 0, 'default': 3, 'increment': 1}),
-				("Epic Mode", {'default': False})]
+		return [("KOs to Win Per Player",{'minValue':1,'default':5,'increment':1}),
+                ("Time Limit",{'choices':[('None',0),('1 Minute',60),
+                                        ('2 Minutes',120),('5 Minutes',300),
+                                        ('10 Minutes',600),('20 Minutes',1200)],'default':0}),
+                ("Respawn Times",{'choices':[('Shorter',0.25),('Short',0.5),('Normal',1.0),('Long',2.0),('Longer',4.0)],'default':1.0}),
+                ("Epic Mode",{'default':False})]
 
 	def __init__(self, settings):
-		bs.TeamGameActivity.__init__(self, settings)
-		self.settings['Lives'] = self.settings["Lives (0 = Unlimited)"]
-		self.timeLimitOnly = (self.settings['Lives'] == 0)
-		if self.timeLimitOnly:
-			self.settings['Time Limit'] = max(60, self.settings['Time Limit'])
+		bs.TeamGameActivity.__init__(self,settings)
+		if self.settings['Epic Mode']: self._isSlowMotion = True
 
-		if self.settings['Epic Mode']:
-			self._isSlowMotion = True
-
-		# print messages when players die (since its meaningful in this game)
+        # print messages when players die since it matters here..
 		self.announcePlayerDeaths = True
-
-		self._lastPlayerDeathTime = None
-
-		self._startGameTime = 1000
+        
+		self._scoreBoard = bs.ScoreBoard()
 
 
 	def onTransitionIn(self):
 		bs.TeamGameActivity.onTransitionIn(self, music='Epic' if self.settings['Epic Mode'] else 'Survival')
 		self._startGameTime = bs.getGameTime()
+		
+	def onTeamJoin(self,team):
+		team.gameData['score'] = 0
+		if self.hasBegun(): self._updateScoreBoard()
 
 	def onBegin(self):
 		bs.TeamGameActivity.onBegin(self)
-		self.setupStandardTimeLimit(self.settings['Time Limit'])
+		if len(self.teams) > 0:
+			self._scoreToWin = self.settings['KOs to Win Per Player'] * max(1,max(len(t.players) for t in self.teams))
+		else: self._scoreToWin = self.settings['KOs to Win Per Player']
 		self.setupStandardPowerupDrops(enableTNT=False)
 		self._pow = None
 		self._tntDropTimer = bs.Timer(1000 * 30, bs.WeakCall(self._dropPowBox), repeat=True)
-		self._updateIcons()
+		self._updateScoreBoard()
+		self._dingSound = bs.getSound('dingSmall')
+		
 
 	def _dropPowBox(self):
 		if self._pow is not None and self._pow.exists():
@@ -395,62 +355,6 @@ class SuperSmash(bs.TeamGameActivity):
 		pos = random.choice(self.getMap().tntPoints)
 		pos = (pos[0], pos[1] + 1, pos[2])
 		self._pow = PowBox(position=pos, velocity=(0, 1, 0))
-
-	def onPlayerJoin(self,player):
-		if 'lives' not in player.gameData:
-			player.gameData['lives'] = self.settings['Lives']
-		# create our icon and spawn
-		player.gameData['icons'] = [Icon(player, position=(0, 50), scale=0.8)]
-		if player.gameData['lives'] > 0 or self.timeLimitOnly:
-			self.spawnPlayer(player)
-
-		# dont waste time doing this until begin
-		if self.hasBegun():
-			self._updateIcons()
-
-	def onPlayerLeave(self,player):
-		bs.TeamGameActivity.onPlayerLeave(self, player)
-
-		player.gameData['icons'] = None
-
-
-		# update icons in a moment since our team will be gone from the list then
-		bs.gameTimer(0, self._updateIcons)
-
-	def _updateIcons(self):
-		# in free-for-all mode, everyone is just lined up along the bottom
-		if isinstance(self.getSession(), bs.FreeForAllSession):
-			count = len(self.teams)
-			xOffs = 85
-			x = xOffs*(count-1) * -0.5
-			for team in self.teams:
-				if len(team.players) > 1:
-					print('WTF have', len(team.players), 'players in ffa team')
-				elif len(team.players) == 1:
-					player = team.players[0]
-					if len(player.gameData['icons']) != 1:
-						print('WTF have', len(player.gameData['icons']), 'icons in non-solo elim')
-					for icon in player.gameData['icons']:
-						icon.setPositionAndScale((x, 30), 0.7)
-						icon.updateForLives()
-					x += xOffs
-
-		# in teams mode we split up teams
-		else:
-			for team in self.teams:
-				if team.getID() == 0:
-					x = -50
-					xOffs = -85
-				else:
-					x = 50
-					xOffs = 85
-				for player in team.players:
-					if len(player.gameData['icons']) != 1:
-						print('WTF have', len(player.gameData['icons']), 'icons in non-solo elim')
-					for icon in player.gameData['icons']:
-						icon.setPositionAndScale((x, 30), 0.7)
-						icon.updateForLives()
-					x += xOffs
 
 
 	# overriding the default character spawning..
@@ -516,107 +420,56 @@ class SuperSmash(bs.TeamGameActivity):
 		bs.gameTimer(500, light.delete)
 
 
-		# if we have any icons, update their state
-		for icon in player.gameData['icons']:
-			icon.handlePlayerSpawned()
-
 
 
 	# various high-level game events come through this method
-	def handleMessage(self, m):
-		if isinstance(m, bs.PlayerSpazDeathMessage):
+	def handleMessage(self,m):
 
-			bs.TeamGameActivity.handleMessage(self, m) # augment standard behavior
+		if isinstance(m,bs.PlayerSpazDeathMessage):
+			bs.TeamGameActivity.handleMessage(self,m) # augment standard behavior
+
 			player = m.spaz.getPlayer()
+			self.respawnPlayer(player)
 
-			player.gameData['lives'] -= 1
+			killer = m.killerPlayer
+			if killer is None: return
 
-			# if we have any icons, update their state
-			for icon in player.gameData['icons']:
-				icon.handlePlayerDied()
+			# handle team-kills
+			if killer.getTeam() is player.getTeam():
 
-			# play big death sound on our last death or for every one in solo mode
-			if  player.gameData['lives'] == 0:
-				bs.playSound(bs.Spaz.getFactory().singlePlayerDeathSound)
+				# in free-for-all, killing yourself loses you a point
+				if isinstance(self.getSession(),bs.FreeForAllSession):
+					player.getTeam().gameData['score'] = max(0,player.getTeam().gameData['score']-1)
 
-			# if we hit zero lives we're dead and the game might be over
-			if player.gameData['lives'] == 0 and not self.timeLimitOnly:
+				# in teams-mode it gives a point to the other team
+				else:
+					bs.playSound(self._dingSound)
+					for team in self.teams:
+						if team is not killer.getTeam():
+							team.gameData['score'] += 1
 
-				# if the whole team is dead, make note of how long they lasted
-				if all(teammate.gameData['lives'] == 0 for teammate in player.getTeam().players):
-
-					# log the team survival if we're the last player on the team
-					player.getTeam().gameData['survivalSeconds'] = (bs.getGameTime()-self._startGameTime)/1000
-
-					# if someone has won, set a timer to end shortly
-					# (allows the dust to settle and draws to occur if deaths are close enough)
-					if len(self._getLivingTeams()) < 2:
-						self._roundEndTimer = bs.Timer(1000, self.endGame)
-
-			# we still have lives; yay!
+			# killing someone on another team nets a kill
 			else:
-				self.respawnPlayer(player)
+				killer.getTeam().gameData['score'] += 1
+				bs.playSound(self._dingSound)
+				# in FFA show our score since its hard to find on the scoreboard
+				try: killer.actor.setScoreText(str(killer.getTeam().gameData['score'])+'/'+str(self._scoreToWin),color=killer.getTeam().color,flash=True)
+				except Exception: pass
 
-		else:
-			# default handler:
-			super(self.__class__, self).handleMessage(m)#bs.TeamGameActivity.handleMessage(self,m)
+			self._updateScoreBoard()
+
+			# if someone has won, set a timer to end shortly
+			# (allows the dust to clear and draws to occur if deaths are close enough)
+			if any(team.gameData['score'] >= self._scoreToWin for team in self.teams):
+				bs.gameTimer(500,self.endGame)
+
+		else: bs.TeamGameActivity.handleMessage(self,m)
+
+	def _updateScoreBoard(self):
+		for team in self.teams:
+			self._scoreBoard.setTeamValue(team,team.gameData['score'],self._scoreToWin)
 
 	def endGame(self):
-
-		curTime = bs.getGameTime()
-		if not self.timeLimitOnly:
-			# mark 'death-time' as now for any still-living players
-			# and award players points for how long they lasted.
-			# (these per-player scores are only meaningful in team-games)
-			for team in self.teams:
-				for player in team.players:
-
-					# throw an extra fudge factor +1 in so teams that
-					# didn't die come out ahead of teams that did
-					if 'survivalSeconds' in player.gameData:
-						score = player.gameData['survivalSeconds']
-					elif 'survivalSeconds' in team.gameData:
-						score = team.gameData['survivalSeconds']
-					else:
-						score = (curTime - self._startGameTime)/1000 + 1
-
-					#if 'survivalSeconds' not in player.gameData:
-					#	player.gameData['survivalSeconds'] = (curTime - self._startGameTime)/1000 + 1
-					#	print('extraBonusSwag for player')
-
-					# award a per-player score depending on how many seconds they lasted
-					# (per-player scores only affect teams mode; everywhere else just looks at the per-team score)
-					#score = (player.gameData['survivalSeconds'])
-					self.scoreSet.playerScored(player, score, screenMessage=False)
-
-
-			# ok now calc game results: set a score for each team and then tell the game to end
-			results = bs.TeamGameResults()
-
-			# remember that 'free-for-all' mode is simply a special form of 'teams' mode
-			# where each player gets their own team, so we can just always deal in teams
-			# and have all cases covered
-			for team in self.teams:
-
-				# set the team score to the max time survived by any player on that team
-				longestLife = 0
-				for player in team.players:
-					if 'survivalSeconds' in player.gameData:
-						time = player.gameData['survivalSeconds']
-					elif 'survivalSeconds' in team.gameData:
-						time = team.gameData['survivalSeconds']
-					else:
-						time = (curTime - self._startGameTime)/1000 + 1
-					longestLife = max(longestLife, time)
-				results.setTeamScore(team, longestLife)
-
-			self.end(results=results)
-		else:
-			results = bs.TeamGameResults()
-			for team in self.teams:
-				deaths = sum([0 - player.gameData['lives'] for player in team.players])
-				results.setTeamScore(team, deaths)
-			self.end(results=results)
-
-	def _getLivingTeams(self):
-		return [team for team in self.teams if len(team.players) > 0 and any(player.gameData['lives'] > 0 for player in team.players)]
+		results = bs.TeamGameResults()
+		for t in self.teams: results.setTeamScore(t,t.gameData['score'])
+		self.end(results=results)
