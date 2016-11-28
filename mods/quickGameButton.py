@@ -100,7 +100,10 @@ class SelectGameWindow(AddGameWindow):
             def getSessionType(self): return self._sessionType
 
         self._editSession = EditSession()
+<<<<<<< HEAD
         self._R = bs.Lstr(resource='addGameWindow')
+=======
+>>>>>>> Mrmaxmeier/master
         self._width = 650
         self._height = 346 if gSmallUI else 380 if gMedUI else 440
         topExtra = 30 if gSmallUI else 20
@@ -178,7 +181,7 @@ class SelectGameWindow(AddGameWindow):
                 bs.containerWidget(edit=self._column, selectedChild=t, visibleChild=t)
 
         self._getMoreGamesButton = bs.buttonWidget(parent=self._column, autoSelect=True,
-                                                   label=self._R.getMoreGamesText,
+                                                   label=bs.Lstr(resource='addGameWindow.getMoreGamesText'),
                                                    color=(0.54, 0.52, 0.67),
                                                    textColor=(0.7, 0.65, 0.7),
                                                    onActivateCall=self._onGetMoreGamesPress,

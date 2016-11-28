@@ -32,7 +32,7 @@ def uuid4():
     return "-".join([('%012x' % random.randrange(16**a))[12 - a:] for a in components])
 
 PROTOCOL_VERSION = 1.1
-STAT_SERVER_URI = "http://bsmm.thuermchen.com"
+STAT_SERVER_URI = None # "http://bsmm.thuermchen.com"
 SUPPORTS_HTTPS = hasattr(httplib, 'HTTPS')
 USER_REPO = "Mrmaxmeier/BombSquad-Community-Mod-Manager"
 
@@ -51,7 +51,7 @@ def _prepare_reload():
 
 
 def bsGetAPIVersion():
-    return 3
+    return 4
 
 quittoapply = None
 checkedMainMenu = False
@@ -138,16 +138,21 @@ def get_index(callback, branch=None, **kwargs):
 
 
 def fetch_stats(callback, **kwargs):
-    url = STAT_SERVER_URI + "/stats?uuid=" + config['uuid']
-    get_cached(url, callback, **kwargs)
+    if STAT_SERVER_URI:
+        url = STAT_SERVER_URI + "/stats?uuid=" + config['uuid']
+        get_cached(url, callback, **kwargs)
 
 
 def stats_cached():
+    if not STAT_SERVER_URI:
+        return False
     url = STAT_SERVER_URI + "/stats?uuid=" + config['uuid']
     return url in web_cache
 
 
 def submit_mod_rating(mod, rating, callback):
+    if not STAT_SERVER_URI:
+        return bs.screenMessage('rating submission disabled')
     url = STAT_SERVER_URI + "/submit_rating"
     data = {
         "uuid": config['uuid'],
@@ -166,7 +171,7 @@ def submit_mod_rating(mod, rating, callback):
 
 
 def submit_download(mod):
-    if not config.get('submit-download-statistics', True):
+    if not config.get('submit-download-statistics', True) or not STAT_SERVER_URI:
         return
 
     url = STAT_SERVER_URI + "/submit_download"
@@ -257,7 +262,7 @@ settingsButton = SettingsButton(id="ModManager", icon="heart", sorting_position=
     .add()
 
 
-class MM_ServerCallThread(threading.Thread):
+class ModManager_ServerCallThread(threading.Thread):
 
     def __init__(self, request, requestType, data, callback, eval_data=True):
         threading.Thread.__init__(self)
@@ -286,7 +291,7 @@ class MM_ServerCallThread(threading.Thread):
 
     def run(self):
         try:
-            bsInternal._setThreadName("MM_ServerCallThread")  # FIXME: using protected apis
+            bsInternal._setThreadName("ModManager_ServerCallThread")  # FIXME: using protected apis
             env = {'User-Agent': bs.getEnvironment()['userAgentString']}
             if self._requestType != "get" or self._data:
                 if self._requestType == 'get':
@@ -316,11 +321,11 @@ class MM_ServerCallThread(threading.Thread):
 
 
 def mm_serverGet(request, data, callback=None, eval_data=True):
-    MM_ServerCallThread(request, 'get', data, callback, eval_data=eval_data).start()
+    ModManager_ServerCallThread(request, 'get', data, callback, eval_data=eval_data).start()
 
 
 def mm_serverPost(request, data, callback=None, eval_data=True):
-    MM_ServerCallThread(request, 'post', data, callback, eval_data=eval_data).start()
+    ModManager_ServerCallThread(request, 'post', data, callback, eval_data=eval_data).start()
 
 
 class ModManagerWindow(Window):
@@ -406,7 +411,7 @@ class ModManagerWindow(Window):
         self._backButton = backButton = ButtonWidget(parent=self._rootWidget, position=(self._width - 160, self._height - 60),
                                                      size=(160, 68), scale=0.77,
                                                      autoSelect=True, textScale=1.3,
-                                                     label=bs.getResource('doneText' if self._modal else 'backText'),
+                                                     label=bs.Lstr(resource='doneText' if self._modal else 'backText'),
                                                      onActivateCall=self._back)
         self._rootWidget.cancelButton = backButton
         TextWidget(parent=self._rootWidget, position=(0, self._height - 47),
@@ -723,8 +728,8 @@ class RateModWindow(Window):
             bs.playSound(bs.getSound('swish'))
         text = "How do you want to rate {}?".format(mod.name)
 
-        okText = bs.getResource('okText')
-        cancelText = bs.getResource('cancelText')
+        okText = bs.Lstr(resource='okText')
+        cancelText = bs.Lstr(resource='cancelText')
         width = 360
         height = 330
 
@@ -981,7 +986,7 @@ class ModInfoWindow(Window):
 
         okButtonSize = button_size()
         okButtonPos = button_pos()
-        okText = bs.getResource('okText')
+        okText = bs.Lstr(resource='okText')
         b = ButtonWidget(parent=self._rootWidget, autoSelect=True, position=okButtonPos, size=okButtonSize, label=okText, onActivateCall=self._ok)
 
         self._rootWidget.onCancelCall = b.activate
@@ -1077,7 +1082,7 @@ class SettingsWindow(Window):
 
         okButtonSize = (150, 50)
         okButtonPos = (width * 0.5 - okButtonSize[0] / 2, 20)
-        okText = bs.getResource('okText')
+        okText = bs.Lstr(resource='okText')
         okButton = ButtonWidget(parent=self._rootWidget, position=okButtonPos, size=okButtonSize, label=okText, onActivateCall=self._ok)
 
         self._rootWidget.set(onCancelCall=okButton.activate, selectedChild=okButton, startButton=okButton)
@@ -1296,7 +1301,7 @@ def _setTab(self, tab):
             self._getMoreGamesButton.delete()
     if tab == "minigames":
         self._getMoreGamesButton = bs.buttonWidget(parent=self._rootWidget, autoSelect=True,
-                                                   label=bs.getResource("addGameWindow").getMoreGamesText,
+                                                   label=bs.Lstr(resource='addGameWindow.getMoreGamesText'),
                                                    color=(0.54, 0.52, 0.67),
                                                    textColor=(0.7, 0.65, 0.7),
                                                    onActivateCall=self._onGetMoreGamesPress,
